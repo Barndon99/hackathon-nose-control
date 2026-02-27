@@ -64,6 +64,46 @@
         gap: 0.45rem;
       }
 
+      .boss-hud {
+        margin-top: 0.4rem;
+        padding: 0.75rem 0.85rem;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 14px;
+        background: rgba(16, 29, 55, 0.68);
+        backdrop-filter: blur(8px);
+      }
+
+      .boss-label-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.45rem;
+        font-size: 0.9rem;
+        color: #dce7ff;
+      }
+
+      #boss-hp-text {
+        font-weight: 700;
+        color: #ffd3d7;
+      }
+
+      .boss-bar {
+        width: 100%;
+        height: 14px;
+        border-radius: 999px;
+        overflow: hidden;
+        background: rgba(255, 255, 255, 0.13);
+        border: 1px solid rgba(255, 255, 255, 0.18);
+      }
+
+      #boss-hp-fill {
+        width: 100%;
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, #ff5959, #ff9747);
+        transition: width 240ms ease;
+      }
+
       .title {
         margin: 0;
         font-size: clamp(1.2rem, 1rem + 1.2vw, 2rem);
@@ -77,20 +117,25 @@
       }
 
       .targets {
-        display: grid;
-        grid-template-columns: repeat(3, minmax(190px, 1fr));
-        gap: clamp(0.8rem, 1.3vw, 1.2rem);
-        align-items: stretch;
+        position: relative;
+        min-height: clamp(330px, 56vh, 520px);
+        border-radius: 18px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        background: rgba(11, 19, 36, 0.55);
+        overflow: hidden;
       }
 
       .target {
         --progress: 0;
-        position: relative;
+        position: absolute;
+        left: 20px;
+        top: 20px;
+        width: clamp(120px, 14vw, 180px);
+        aspect-ratio: 1 / 1;
         border: 2px solid rgba(255, 255, 255, 0.14);
         background: linear-gradient(160deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
         border-radius: 20px;
-        padding: 1rem;
-        min-height: clamp(180px, 32vh, 280px);
+        padding: 0.75rem;
         display: grid;
         place-items: center;
         text-align: center;
@@ -137,8 +182,10 @@
       }
 
       .target.is-hovered {
-        transform: translateY(-2px) scale(1.01);
         border-color: rgba(255, 255, 255, 0.35);
+        box-shadow:
+          0 0 0 2px rgba(255, 255, 255, 0.25),
+          0 0 22px rgba(255, 255, 255, 0.18);
       }
 
       .target.is-success {
@@ -237,7 +284,7 @@
 
       @media (max-width: 900px) {
         .targets {
-          grid-template-columns: 1fr;
+          min-height: 62vh;
         }
       }
     </style>
@@ -248,6 +295,15 @@
         <header class="topbar">
           <h1 class="title">Nose Cursor Control</h1>
           <p class="status" id="status">Initializing camera...</p>
+          <div class="boss-hud">
+            <div class="boss-label-row">
+              <span>BOSS HP</span>
+              <span id="boss-hp-text">100%</span>
+            </div>
+            <div class="boss-bar">
+              <div id="boss-hp-fill"></div>
+            </div>
+          </div>
         </header>
 
         <h2 class="section-title">Warm Up</h2>
@@ -271,7 +327,7 @@
             </div>
           </section>
         </main>
-        <p class="hint">Move your nose to move the red cursor. Keep it over a target for 2 seconds to click.</p>
+        <p class="hint">Move your nose to control the cursor and clear moving squares with a 2s dwell.</p>
         <p class="scroll-help">Look up to scroll up. Look down to scroll down.</p>
       </section>
 
@@ -338,6 +394,8 @@
         const statusEl = document.getElementById("status");
         const topScrollZoneEl = document.getElementById("scroll-zone-top");
         const bottomScrollZoneEl = document.getElementById("scroll-zone-bottom");
+        const bossHpFillEl = document.getElementById("boss-hp-fill");
+        const bossHpTextEl = document.getElementById("boss-hp-text");
         const targets = Array.from(document.querySelectorAll(".target"));
 
         const DWELL_MS = 2000;
@@ -360,9 +418,23 @@
         let hoverLocked = false;
         let audioContext = null;
         let hasAnnouncedReady = false;
+        let previousFrameTime = performance.now();
+        const targetMotion = new Map();
+        const bossHpMax = targets.length;
+        let bossHpCurrent = bossHpMax;
 
         function setStatus(message) {
           statusEl.textContent = message;
+        }
+
+        function updateBossHpUI() {
+          const percent = Math.max(0, Math.round((bossHpCurrent / bossHpMax) * 100));
+          bossHpFillEl.style.width = `${percent}%`;
+          bossHpTextEl.textContent = `${percent}%`;
+
+          if (percent === 0) {
+            setStatus("Boss defeated. You cleared every moving square.");
+          }
         }
 
         function resetDwellUI() {
@@ -410,10 +482,67 @@
         }
 
         function triggerTargetSuccess(targetEl) {
+          if (targetEl.classList.contains("is-success")) return;
           targetEl.classList.add("is-success");
           const messageEl = targetEl.querySelector("p");
           if (messageEl) messageEl.textContent = "Clicked!";
+          bossHpCurrent = Math.max(0, bossHpCurrent - 1);
+          updateBossHpUI();
           playSuccessBeep();
+        }
+
+        function seedTargetMotion() {
+          targetMotion.clear();
+          targets.forEach((targetEl, index) => {
+            const arenaEl = targetEl.parentElement;
+            const arenaRect = arenaEl.getBoundingClientRect();
+            const size = Math.max(92, Math.min(160, Math.round(arenaRect.width * 0.19)));
+            const maxX = Math.max(0, arenaRect.width - size);
+            const maxY = Math.max(0, arenaRect.height - size);
+            const x = Math.random() * maxX;
+            const y = Math.random() * maxY;
+            const speed = 70 + Math.random() * 50;
+            const vx = (Math.random() > 0.5 ? 1 : -1) * speed;
+            const vy = (Math.random() > 0.5 ? 1 : -1) * (speed * (0.75 + Math.random() * 0.5));
+
+            targetEl.style.width = `${size}px`;
+            targetEl.style.left = `${x}px`;
+            targetEl.style.top = `${y}px`;
+            targetMotion.set(targetEl, { x, y, vx, vy, size, arenaEl, index });
+          });
+        }
+
+        function updateMovingTargets(dtSec) {
+          targets.forEach((targetEl) => {
+            const motion = targetMotion.get(targetEl);
+            if (!motion || targetEl.classList.contains("is-success")) return;
+
+            const arenaRect = motion.arenaEl.getBoundingClientRect();
+            const maxX = Math.max(0, arenaRect.width - motion.size);
+            const maxY = Math.max(0, arenaRect.height - motion.size);
+
+            motion.x += motion.vx * dtSec;
+            motion.y += motion.vy * dtSec;
+
+            if (motion.x <= 0) {
+              motion.x = 0;
+              motion.vx = Math.abs(motion.vx);
+            } else if (motion.x >= maxX) {
+              motion.x = maxX;
+              motion.vx = -Math.abs(motion.vx);
+            }
+
+            if (motion.y <= 0) {
+              motion.y = 0;
+              motion.vy = Math.abs(motion.vy);
+            } else if (motion.y >= maxY) {
+              motion.y = maxY;
+              motion.vy = -Math.abs(motion.vy);
+            }
+
+            targetEl.style.left = `${motion.x}px`;
+            targetEl.style.top = `${motion.y}px`;
+          });
         }
 
         function updateDwell(now) {
@@ -478,6 +607,10 @@
         }
 
         function renderLoop(now) {
+          const dtMs = Math.min(40, Math.max(8, now - previousFrameTime));
+          previousFrameTime = now;
+          updateMovingTargets(dtMs / 1000);
+
           currentX += (targetX - currentX) * LERP_ALPHA;
           currentY += (targetY - currentY) * LERP_ALPHA;
 
@@ -588,6 +721,7 @@
           targetY = Math.min(targetY, window.innerHeight);
           currentX = Math.min(currentX, window.innerWidth);
           currentY = Math.min(currentY, window.innerHeight);
+          seedTargetMotion();
         });
 
         window.addEventListener("beforeunload", () => {
@@ -596,6 +730,8 @@
           }
         });
 
+        seedTargetMotion();
+        updateBossHpUI();
         animationFrameId = requestAnimationFrame(renderLoop);
         initFaceTracking();
       })();
