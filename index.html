@@ -1,0 +1,604 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Nose Cursor Control</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0b1020;
+        --bg-card: #121b31;
+        --text: #f7f9ff;
+        --text-subtle: #9bb0e3;
+        --danger: #ff2f45;
+        --success: #23ff80;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        min-height: 100%;
+      }
+
+      body {
+        margin: 0;
+        font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+        color: var(--text);
+        background:
+          radial-gradient(120% 120% at 80% 10%, #1f2f5d 0%, rgba(31, 47, 93, 0) 50%),
+          radial-gradient(100% 100% at 10% 90%, #16365f 0%, rgba(22, 54, 95, 0) 45%),
+          var(--bg);
+        overflow-x: hidden;
+      }
+
+      .app {
+        min-height: 100%;
+        padding: clamp(1rem, 2vw, 1.75rem);
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+      }
+
+      .section {
+        min-height: 88vh;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        justify-content: center;
+      }
+
+      .section-title {
+        margin: 0;
+        color: #dce7ff;
+        font-size: clamp(1.05rem, 0.95rem + 0.6vw, 1.35rem);
+        letter-spacing: 0.03em;
+      }
+
+      .topbar {
+        display: flex;
+        flex-direction: column;
+        gap: 0.45rem;
+      }
+
+      .title {
+        margin: 0;
+        font-size: clamp(1.2rem, 1rem + 1.2vw, 2rem);
+        letter-spacing: 0.02em;
+      }
+
+      .status {
+        margin: 0;
+        font-size: clamp(0.85rem, 0.8rem + 0.3vw, 1rem);
+        color: var(--text-subtle);
+      }
+
+      .targets {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(190px, 1fr));
+        gap: clamp(0.8rem, 1.3vw, 1.2rem);
+        align-items: stretch;
+      }
+
+      .target {
+        --progress: 0;
+        position: relative;
+        border: 2px solid rgba(255, 255, 255, 0.14);
+        background: linear-gradient(160deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
+        border-radius: 20px;
+        padding: 1rem;
+        min-height: clamp(180px, 32vh, 280px);
+        display: grid;
+        place-items: center;
+        text-align: center;
+        box-shadow:
+          0 8px 24px rgba(0, 0, 0, 0.35),
+          inset 0 1px 0 rgba(255, 255, 255, 0.14);
+        overflow: hidden;
+        transition: transform 180ms ease, border-color 180ms ease, background 220ms ease, box-shadow 220ms ease;
+      }
+
+      .target::before {
+        content: "";
+        position: absolute;
+        inset: -2px;
+        border-radius: inherit;
+        background: conic-gradient(from -90deg, rgba(255, 255, 255, 0.08) 0deg, var(--accent) calc(var(--progress) * 1turn), rgba(255, 255, 255, 0.08) 0deg);
+        z-index: 0;
+        pointer-events: none;
+      }
+
+      .target::after {
+        content: "";
+        position: absolute;
+        inset: 4px;
+        border-radius: 16px;
+        background: var(--bg-card);
+        z-index: 1;
+      }
+
+      .target-content {
+        position: relative;
+        z-index: 2;
+      }
+
+      .target h2 {
+        margin: 0;
+        font-size: clamp(1.25rem, 1rem + 1vw, 1.85rem);
+      }
+
+      .target p {
+        margin: 0.5rem 0 0;
+        color: #d8e4ff;
+        font-size: 0.95rem;
+      }
+
+      .target.is-hovered {
+        transform: translateY(-2px) scale(1.01);
+        border-color: rgba(255, 255, 255, 0.35);
+      }
+
+      .target.is-success {
+        border-color: rgba(35, 255, 128, 0.8);
+        background: linear-gradient(160deg, rgba(35, 255, 128, 0.28), rgba(35, 255, 128, 0.12));
+        box-shadow: 0 0 36px rgba(35, 255, 128, 0.28);
+      }
+
+      .target.is-success::before {
+        background: linear-gradient(130deg, rgba(35, 255, 128, 0.65), rgba(35, 255, 128, 0.35));
+      }
+
+      .target[data-color="pink"] {
+        --accent: #ff4fb0;
+      }
+
+      .target[data-color="blue"] {
+        --accent: #47a6ff;
+      }
+
+      .target[data-color="orange"] {
+        --accent: #ff9f3f;
+      }
+
+      .hint {
+        margin: 0;
+        color: var(--text-subtle);
+        font-size: 0.88rem;
+      }
+
+      .scroll-help {
+        margin: 0;
+        color: #bfceff;
+        font-size: 0.9rem;
+      }
+
+      #nose-cursor {
+        position: fixed;
+        width: 24px;
+        height: 24px;
+        left: 50vw;
+        top: 50vh;
+        border-radius: 50%;
+        background: radial-gradient(circle at 35% 35%, #ffd0d7 0%, #ff5e70 35%, var(--danger) 70%);
+        border: 2px solid rgba(255, 255, 255, 0.92);
+        box-shadow: 0 0 22px rgba(255, 47, 69, 0.85), 0 0 55px rgba(255, 47, 69, 0.55);
+        transform: translate(-50%, -50%);
+        z-index: 9999;
+        pointer-events: none;
+        display: block;
+        animation: cursorPulse 1.2s ease-in-out infinite alternate;
+      }
+
+      @keyframes cursorPulse {
+        from {
+          box-shadow: 0 0 16px rgba(255, 47, 69, 0.8), 0 0 38px rgba(255, 47, 69, 0.45);
+        }
+        to {
+          box-shadow: 0 0 26px rgba(255, 47, 69, 0.95), 0 0 60px rgba(255, 47, 69, 0.6);
+        }
+      }
+
+      #input-video {
+        position: fixed;
+        inset: auto;
+        width: 1px;
+        height: 1px;
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .scroll-zone {
+        position: fixed;
+        left: 0;
+        width: 100%;
+        height: 12vh;
+        pointer-events: none;
+        z-index: 1000;
+        opacity: 0;
+        transition: opacity 130ms ease;
+      }
+
+      .scroll-zone.top {
+        top: 0;
+        background: linear-gradient(180deg, rgba(71, 166, 255, 0.35), rgba(71, 166, 255, 0));
+      }
+
+      .scroll-zone.bottom {
+        bottom: 0;
+        background: linear-gradient(0deg, rgba(255, 159, 63, 0.35), rgba(255, 159, 63, 0));
+      }
+
+      .scroll-zone.active {
+        opacity: 1;
+      }
+
+      @media (max-width: 900px) {
+        .targets {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <section class="section">
+        <header class="topbar">
+          <h1 class="title">Nose Cursor Control</h1>
+          <p class="status" id="status">Initializing camera...</p>
+        </header>
+
+        <h2 class="section-title">Warm Up</h2>
+        <main class="targets" aria-label="Dwell targets">
+          <section class="target" data-target-id="target-1" data-color="pink" aria-label="Target 1">
+            <div class="target-content">
+              <h2>Target 1</h2>
+              <p>Hold cursor for 2s</p>
+            </div>
+          </section>
+          <section class="target" data-target-id="target-2" data-color="blue" aria-label="Target 2">
+            <div class="target-content">
+              <h2>Target 2</h2>
+              <p>Hold cursor for 2s</p>
+            </div>
+          </section>
+          <section class="target" data-target-id="target-3" data-color="orange" aria-label="Target 3">
+            <div class="target-content">
+              <h2>Target 3</h2>
+              <p>Hold cursor for 2s</p>
+            </div>
+          </section>
+        </main>
+        <p class="hint">Move your nose to move the red cursor. Keep it over a target for 2 seconds to click.</p>
+        <p class="scroll-help">Look up to scroll up. Look down to scroll down.</p>
+      </section>
+
+      <section class="section">
+        <h2 class="section-title">Mini Games: Color Sprint</h2>
+        <div class="targets" aria-label="Color Sprint targets">
+          <section class="target" data-target-id="target-4" data-color="blue" aria-label="Target 4">
+            <div class="target-content">
+              <h2>Sky Gate</h2>
+              <p>2s dwell to clear</p>
+            </div>
+          </section>
+          <section class="target" data-target-id="target-5" data-color="pink" aria-label="Target 5">
+            <div class="target-content">
+              <h2>Neon Core</h2>
+              <p>2s dwell to clear</p>
+            </div>
+          </section>
+          <section class="target" data-target-id="target-6" data-color="orange" aria-label="Target 6">
+            <div class="target-content">
+              <h2>Solar Ring</h2>
+              <p>2s dwell to clear</p>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2 class="section-title">Mini Games: Boss Round</h2>
+        <div class="targets" aria-label="Boss round targets">
+          <section class="target" data-target-id="target-7" data-color="orange" aria-label="Target 7">
+            <div class="target-content">
+              <h2>Boss Left</h2>
+              <p>Hold steady for 2s</p>
+            </div>
+          </section>
+          <section class="target" data-target-id="target-8" data-color="blue" aria-label="Target 8">
+            <div class="target-content">
+              <h2>Boss Mid</h2>
+              <p>Hold steady for 2s</p>
+            </div>
+          </section>
+          <section class="target" data-target-id="target-9" data-color="pink" aria-label="Target 9">
+            <div class="target-content">
+              <h2>Boss Right</h2>
+              <p>Hold steady for 2s</p>
+            </div>
+          </section>
+        </div>
+      </section>
+    </div>
+
+    <video id="input-video" autoplay playsinline muted></video>
+    <div class="scroll-zone top" id="scroll-zone-top" aria-hidden="true"></div>
+    <div class="scroll-zone bottom" id="scroll-zone-bottom" aria-hidden="true"></div>
+    <div id="nose-cursor" aria-hidden="true"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+    <script>
+      (() => {
+        const videoEl = document.getElementById("input-video");
+        const cursorEl = document.getElementById("nose-cursor");
+        const statusEl = document.getElementById("status");
+        const topScrollZoneEl = document.getElementById("scroll-zone-top");
+        const bottomScrollZoneEl = document.getElementById("scroll-zone-bottom");
+        const targets = Array.from(document.querySelectorAll(".target"));
+
+        const DWELL_MS = 2000;
+        const LERP_ALPHA = 0.22;
+        const CURSOR_SIZE = 24;
+        const MIRROR_X = true;
+        const SCROLL_ZONE_RATIO = 0.22;
+        const SCROLL_STEP_MAX = 26;
+
+        let currentX = window.innerWidth * 0.5;
+        let currentY = window.innerHeight * 0.5;
+        let targetX = currentX;
+        let targetY = currentY;
+
+        let hasFace = false;
+        let trackingReady = false;
+        let animationFrameId = null;
+        let activeTarget = null;
+        let hoverStartAt = 0;
+        let hoverLocked = false;
+        let audioContext = null;
+        let hasAnnouncedReady = false;
+
+        function setStatus(message) {
+          statusEl.textContent = message;
+        }
+
+        function resetDwellUI() {
+          if (activeTarget) {
+            activeTarget.classList.remove("is-hovered");
+            activeTarget.style.setProperty("--progress", "0");
+          }
+          activeTarget = null;
+          hoverStartAt = 0;
+          hoverLocked = false;
+        }
+
+        function pointInsideRect(x, y, rect) {
+          return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+        }
+
+        function playSuccessBeep() {
+          try {
+            if (!audioContext) {
+              audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioContext.state === "suspended") {
+              audioContext.resume();
+            }
+
+            const now = audioContext.currentTime;
+            const osc = audioContext.createOscillator();
+            const gain = audioContext.createGain();
+
+            osc.type = "triangle";
+            osc.frequency.setValueAtTime(680, now);
+            osc.frequency.exponentialRampToValueAtTime(1180, now + 0.12);
+
+            gain.gain.setValueAtTime(0.0001, now);
+            gain.gain.exponentialRampToValueAtTime(0.22, now + 0.015);
+            gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.19);
+
+            osc.connect(gain);
+            gain.connect(audioContext.destination);
+            osc.start(now);
+            osc.stop(now + 0.2);
+          } catch (err) {
+            console.warn("Audio feedback unavailable:", err);
+          }
+        }
+
+        function triggerTargetSuccess(targetEl) {
+          targetEl.classList.add("is-success");
+          const messageEl = targetEl.querySelector("p");
+          if (messageEl) messageEl.textContent = "Clicked!";
+          playSuccessBeep();
+        }
+
+        function updateDwell(now) {
+          const hovered = targets.find((targetEl) => {
+            const rect = targetEl.getBoundingClientRect();
+            return pointInsideRect(currentX, currentY, rect);
+          });
+
+          if (!hovered || hovered.classList.contains("is-success")) {
+            resetDwellUI();
+            return;
+          }
+
+          if (hovered !== activeTarget) {
+            resetDwellUI();
+            activeTarget = hovered;
+            hoverStartAt = now;
+            hoverLocked = false;
+            activeTarget.classList.add("is-hovered");
+          }
+
+          const elapsed = now - hoverStartAt;
+          const progress = Math.max(0, Math.min(1, elapsed / DWELL_MS));
+          activeTarget.style.setProperty("--progress", progress.toFixed(3));
+
+          if (!hoverLocked && elapsed >= DWELL_MS) {
+            hoverLocked = true;
+            triggerTargetSuccess(activeTarget);
+          }
+        }
+
+        function updateAutoScroll() {
+          if (!trackingReady || !hasFace) {
+            topScrollZoneEl.classList.remove("active");
+            bottomScrollZoneEl.classList.remove("active");
+            return;
+          }
+
+          const yRatio = currentY / Math.max(1, window.innerHeight);
+          const upperTrigger = SCROLL_ZONE_RATIO;
+          const lowerTrigger = 1 - SCROLL_ZONE_RATIO;
+          let scrollDelta = 0;
+
+          if (yRatio < upperTrigger) {
+            const intensity = (upperTrigger - yRatio) / upperTrigger;
+            scrollDelta = -Math.max(2, Math.round(SCROLL_STEP_MAX * intensity));
+            topScrollZoneEl.classList.add("active");
+            bottomScrollZoneEl.classList.remove("active");
+          } else if (yRatio > lowerTrigger) {
+            const intensity = (yRatio - lowerTrigger) / upperTrigger;
+            scrollDelta = Math.max(2, Math.round(SCROLL_STEP_MAX * intensity));
+            bottomScrollZoneEl.classList.add("active");
+            topScrollZoneEl.classList.remove("active");
+          } else {
+            topScrollZoneEl.classList.remove("active");
+            bottomScrollZoneEl.classList.remove("active");
+          }
+
+          if (scrollDelta !== 0) {
+            window.scrollBy({ top: scrollDelta, behavior: "auto" });
+          }
+        }
+
+        function renderLoop(now) {
+          currentX += (targetX - currentX) * LERP_ALPHA;
+          currentY += (targetY - currentY) * LERP_ALPHA;
+
+          const cursorX = Math.max(CURSOR_SIZE * 0.5, Math.min(window.innerWidth - CURSOR_SIZE * 0.5, currentX));
+          const cursorY = Math.max(CURSOR_SIZE * 0.5, Math.min(window.innerHeight - CURSOR_SIZE * 0.5, currentY));
+
+          cursorEl.style.left = `${cursorX}px`;
+          cursorEl.style.top = `${cursorY}px`;
+          updateAutoScroll();
+
+          if (trackingReady && hasFace) {
+            updateDwell(now);
+            if (!hasAnnouncedReady) {
+              setStatus("Tracking active. Dwell over a target for 2 seconds.");
+              hasAnnouncedReady = true;
+            }
+          } else if (trackingReady && !hasFace) {
+            resetDwellUI();
+            setStatus("No face detected. Center your face in front of the camera.");
+          }
+
+          animationFrameId = requestAnimationFrame(renderLoop);
+        }
+
+        async function initFaceTracking() {
+          if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            setStatus("Camera API not supported in this browser.");
+            return;
+          }
+
+          setStatus("Requesting webcam permission...");
+
+          let stream;
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: {
+                facingMode: "user",
+                width: { ideal: 1280 },
+                height: { ideal: 720 }
+              },
+              audio: false
+            });
+          } catch (err) {
+            console.error(err);
+            setStatus("Camera permission denied or unavailable.");
+            return;
+          }
+
+          videoEl.srcObject = stream;
+
+          try {
+            await videoEl.play();
+          } catch (err) {
+            console.error(err);
+            setStatus("Unable to start camera video.");
+            return;
+          }
+
+          const faceMesh = new FaceMesh({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
+          });
+
+          faceMesh.setOptions({
+            maxNumFaces: 1,
+            refineLandmarks: true,
+            minDetectionConfidence: 0.55,
+            minTrackingConfidence: 0.55
+          });
+
+          faceMesh.onResults((results) => {
+            const face = results.multiFaceLandmarks && results.multiFaceLandmarks[0];
+            if (!face) {
+              hasFace = false;
+              return;
+            }
+
+            hasFace = true;
+            const nose = face[4] || face[1];
+            if (!nose) return;
+
+            const nx = MIRROR_X ? 1 - nose.x : nose.x;
+            const ny = nose.y;
+
+            targetX = Math.max(0, Math.min(window.innerWidth, nx * window.innerWidth));
+            targetY = Math.max(0, Math.min(window.innerHeight, ny * window.innerHeight));
+          });
+
+          const camera = new Camera(videoEl, {
+            onFrame: async () => {
+              await faceMesh.send({ image: videoEl });
+            },
+            width: 640,
+            height: 480
+          });
+
+          try {
+            await camera.start();
+            trackingReady = true;
+          } catch (err) {
+            console.error(err);
+            setStatus("Failed to initialize MediaPipe camera loop.");
+            return;
+          }
+        }
+
+        window.addEventListener("resize", () => {
+          targetX = Math.min(targetX, window.innerWidth);
+          targetY = Math.min(targetY, window.innerHeight);
+          currentX = Math.min(currentX, window.innerWidth);
+          currentY = Math.min(currentY, window.innerHeight);
+        });
+
+        window.addEventListener("beforeunload", () => {
+          if (animationFrameId) {
+            cancelAnimationFrame(animationFrameId);
+          }
+        });
+
+        animationFrameId = requestAnimationFrame(renderLoop);
+        initFaceTracking();
+      })();
+    </script>
+  </body>
+</html>
